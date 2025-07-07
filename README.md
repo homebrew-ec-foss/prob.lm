@@ -13,3 +13,4 @@ A low-resource RAG-based assistant that answers academic questions using student
 
 # Mentors:
 - Saijyoti Panda
+- Pranavjeet Naidu
