@@ -4,7 +4,7 @@ A low-resource RAG-based assistant that answers academic questions using student
 
 # Mentees:
 
-- Remove this and Insert your name here
+- Atharv Sawarkar (@kazabiteboltiz)
 -
 -
 -
