@@ -7,6 +7,7 @@ A low-resource RAG-based assistant that answers academic questions using student
 - Atharv Sawarkar (@kazabiteboltiz)
 - Anshul Banda (@AnshulBanda)
 - S S Adhithya Sriram (@SS-AdhithyaSriram)
+- Ayushi Mittal (@mittal-ayushi)
 -
 -
 
