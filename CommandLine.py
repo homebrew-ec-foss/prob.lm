@@ -18,8 +18,9 @@ from rich.table import Table, box
 
 
 # Initialize Rich  Console
-
 console = Console()
+
+
 
 try:
     import PyPDF2
