@@ -4,9 +4,8 @@
 # Ignore folders (must include trailing slash)
 Resources/
 documents/
-
+venv/
 
 # Ignore specific files
 Test.ipynb
 text_chunks_and_embeddings_df.csv
-requirements.txt
