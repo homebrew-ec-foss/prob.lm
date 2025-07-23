@@ -275,5 +275,5 @@ def main():
         except KeyboardInterrupt:
             console.print("\n[bold magenta]Exiting... Thank You! [/bold magenta]")
             sys.exit(0)
-if __name__ == "_main_":
+if __name__ == "__main__":
     main()
