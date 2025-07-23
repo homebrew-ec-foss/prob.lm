@@ -1,0 +1,4 @@
+
+rich>=13.0.0
+PyPDF2>=3.0.0  # For PDF document support
+
