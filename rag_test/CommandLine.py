@@ -16,7 +16,7 @@ from rich.markdown import Markdown
 from rich.prompt import Prompt
 from rich.table import Table, box
 
-# Initialize Rich Console
+# Initialize Rich  Console
 console = Console()
 
 try:
