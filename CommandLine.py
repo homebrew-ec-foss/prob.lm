@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Rich - User-friendly frontend
-from rich.console import Console
+from rich.console import  Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.prompt import Prompt
