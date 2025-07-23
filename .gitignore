@@ -9,3 +9,7 @@ venv/
 # Ignore specific files
 Test.ipynb
 text_chunks_and_embeddings_df.csv
+
+# Ignore folders that the RAG Pipeline creates
+rag_documents/
+chroma_db_problm/
