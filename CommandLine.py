@@ -10,25 +10,36 @@ from pathlib import Path
 from datetime import datetime
 
 # Rich - User-friendly frontend
-from rich.console import  Console
+from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.prompt import Prompt
 from rich.table import Table, box
 
-
-# Initialize Rich  Console
+# Initialize Rich Console
 console = Console()
 
-
-
 try:
-    import PyPDF2
+    import pypdf # Changed from PyPDF2 to pypdf
     PDF_SUPPORT = True
 except ImportError:
     PDF_SUPPORT = False
-    console.print("[yellow]Warning: PyPDF2 not installed. PDF support disabled. Install with: pip install PyPDF2[/yellow]")
+    console.print("[yellow]Warning: pypdf not installed. PDF support disabled. Install with: pip install pypdf[/yellow]")
+    
+# Document Loading and splitting
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+# Chroma Vector Store and Embeddings
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+
+
+# Embedding Models
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+
+# Database Path
+DB_PATH = "chroma_db_problm"
 
 #===================================================================================================================
 """
@@ -52,7 +63,7 @@ class DocumentUploader:
                     data = json.load(f)
                     for doc_id, doc_info in data.items():
                         if 'is_indexed' not in doc_info:
-                            doc_info['is_indexed'] = False
+                            doc_info['is_indexed'] = False 
                     return data
             except (json.JSONDecodeError, IOError):
                 console.print("[yellow]Warning: Could not load documents file. Starting fresh.[/yellow]")
@@ -88,15 +99,15 @@ class DocumentUploader:
                 "file_type": file_extension,
                 "size": source_path.stat().st_size,
                 "upload_date": datetime.now().isoformat(),
-                "is_indexed": False
+                "is_indexed": False 
             }
             self._save_documents()
             console.print(Panel(f"[green]✓ Document uploaded: [bold]{doc_id}[/bold]\n"
-                                 f"      Title: {self.documents[doc_id]['title']}",title="Upload Success", border_style="green"))
+                                f"       Title: {self.documents[doc_id]['title']}",title="Upload Success", border_style="green"))
             return True
         except Exception as e:
             console.print(Panel(f"[bold red]Error uploading document: {e}[/bold red]",
-                                 title="Upload Failed", border_style="red"))
+                                title="Upload Failed", border_style="red"))
             return False
 
     def list_documents(self):
@@ -111,7 +122,7 @@ class DocumentUploader:
         table.add_column("Type", style="green", header_style="bold green")
         table.add_column("Size", style="yellow", header_style="bold yellow")
         table.add_column("Upload Date", style="dim", header_style="bold dim")
-        table.add_column("Indexed?", style="white", header_style="bold white")
+        table.add_column("Indexed?", style="white", header_style="bold white") 
 
         for doc_id, doc_info in self.documents.items():
             title = doc_info['title']
@@ -149,48 +160,207 @@ class DocumentUploader:
                 self._save_documents()
                 return
 
+#==============================================================================================
+
+# Core RAG Pipeline
+def process_documents_for_rag(file_paths):
+    """
+    Loads and splits documents into chunks.
+    """
+    all_docs = []   # Stores all loaded document objects
+    processed_file_paths = []   # Tracks paths of successfully processed files
+
+    # Early return if no file paths provided
+    if not file_paths:
+        return [], []
+
+    # Process each file in the input list
+    for file_path in file_paths:
+        target_path = Path(file_path)
+
+        # Skip directories and notify user
+        if target_path.is_dir():
+            console.print(f"[yellow]Skipping directory path: {file_path}. Please upload individual files.[/yellow]")
+            continue
+
+        # Determine file type and initialize appropriate loader
+        file_extension = target_path.suffix.lower()
+        loader = None
+        
+        # Initialize appropriate document loader based on file extension
+        if file_extension == ".pdf":
+            if not PDF_SUPPORT:
+                console.print(f"[yellow]Skipping PDF {file_path}: pypdf not installed.[/yellow]")
+                continue
+            loader = PyPDFLoader(str(target_path))
+        elif file_extension in ['.txt', '.md', '.py', '.js', '.html', '.css', '.json']:
+            loader = TextLoader(str(target_path), encoding='utf-8')
+        else:
+            console.print(f"[yellow]Skipping unsupported file type: {file_path}[/yellow]")
+            continue
+
+        try:
+            # Load and process the document
+            loaded_docs = loader.load()
+            all_docs.extend(loaded_docs)
+            processed_file_paths.append(file_path)
+        except Exception as e:
+            # Log errors but continue processing other files
+            console.print(f"[bold red]Error loading {file_path} with {loader.__class__.__name__}: {e}[/bold red]")
+
+    # Return empty results if no documents were successfully loaded
+    if not all_docs:
+        return [], []
+
+    # Split documents into smaller chunks for better processing
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,        # Target size of each chunk in characters
+        chunk_overlap=150       # Overlap between chunks to maintain context
+    )
+    split_docs = text_splitter.split_documents(all_docs)
+
+    return split_docs, processed_file_paths
+
+def create_retriever(new_split_docs, newly_processed_file_paths, uploader):
+    """
+    Creates a powerful retriever with Hybrid Search and a Re-ranker.
+    It will load existing Chroma DB and add new documents, and rebuild BM25 for all indexed documents.
+    """
+    # Setting up the brain for understanding text (embeddings)
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    vector_store = None
+
+    db_path_obj = Path(DB_PATH)
+
+    with console.status("[bold cyan]Setting up retriever...[/bold cyan]", spinner="dots"):
+        # 1. Initialize or Load Chroma Vector Store
+        # Checking if we already have a vector database (Chroma DB)
+        if db_path_obj.exists() and any(db_path_obj.iterdir()):
+            console.print("[cyan]✅ Chroma DB Initialized (loading existing)[/cyan]")
+            vector_store = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
+
+            if new_split_docs: # Only add documents if there are new ones to add
+                try:
+                    vector_store.add_documents(new_split_docs)
+                    console.print("[green]✅ Added new document chunks to Chroma DB.[/green]")
+                    # Mark newly processed documents as indexed
+                    for path in newly_processed_file_paths:
+                        uploader.mark_as_indexed(path)
+                except Exception as e:
+                    console.print(f"[bold red]Error adding new documents to existing Chroma DB: {e}[/bold red]")
+                    console.print("[yellow]Consider deleting the 'chroma_db_problm' directory to rebuild if issues persist.[/yellow]")
+            else:
+                console.print("[cyan]No new documents to add to existing Chroma DB.[/cyan]")
+        else:
+            if not new_split_docs: # If no existing DB and no new docs, can't proceed
+                console.print("[bold red]Cannot create new Chroma DB: No documents to process initially.[/bold red]")
+                return None
+            console.print("[cyan]✅ Creating new Chroma DB...[/cyan]")
+            # If no DB, creating a new one from scratch with the new docs
+            vector_store = Chroma.from_documents(documents=new_split_docs, embedding=embeddings, persist_directory=DB_PATH)
+            # Mark all newly added documents as indexed
+            for path in newly_processed_file_paths:
+                uploader.mark_as_indexed(path)
+
+    if vector_store is None:
+        console.print("[bold red]Failed to initialize or load Chroma DB. Cannot create retriever.[/bold red]")
+        return None
+
+    # These parts will be filled in by subsequent commits
+    console.print("[yellow]Retriever setup not yet fully implemented (BM25, Reranking, Ensemble).[/yellow]")
+    return None # Return None as retriever is not fully functional yet
+
 #==============================================================================================================
 
 # Front end with execution loops and error handling
 def main():
-    console.print(Panel("[bold magenta]✨ Prob.lm - RAG Study Assistant ✨[/bold magenta]",
-                                 subtitle="[default]Powered by Hybrid Search[/default]",
-                                 expand=False, width=80))
+    # Initialize the application with a welcome banner
+    console.print(Panel(
+        "[bold magenta]✨ Prob.lm - RAG Study Assistant ✨[/bold magenta]",
+        subtitle="[default]Powered by Hybrid Search[/default]",
+        expand=False, 
+        width=80
+    ))
 
-    uploader = DocumentUploader()
-    llm = None # Placeholder
-    retriever = None # Placeholder
-    document_chain = None # Placeholder
+    # Initialize core components
+    uploader = DocumentUploader()   # Handles document storage and metadata
+    llm = None  # Placeholder for LLM, will be initialized in later commits
 
+    # Will be set up when documents are processed
+    retriever = None
+    document_chain = None
+
+    # Main application loop
     while True:
         try:
+            # Display main menu options
             console.print("\n[bold]Main Menu:[/bold]")
             console.print("[green]1. Upload Document(s)[/green]")
             console.print("[cyan]2. List Uploaded Documents[/cyan]")
             console.print("[blue]3. Process Documents & Start Q&A (RAG Pipeline)[/blue]")
             console.print("[red]4. Exit[/red]")
 
+            # Get user choice with input validation
             choice = Prompt.ask("Choose an option", choices=["1", "2", "3", "4"])
 
+            # Handle document upload
             if choice == "1":
-                file_path = Prompt.ask("Enter the full path to the document file (e.g., /path/to/my_doc.pdf)")
+                file_path = Prompt.ask(
+                    "Enter the full path to the document file (e.g., /path/to/my_doc.pdf)"
+                )
+                # Validate file exists before proceeding
                 if not Path(file_path).exists():
                     console.print(f"[bold red]Error: File not found at {file_path}[/bold red]")
                     continue
-                title = Prompt.ask("Enter a custom title for the document (optional)", default=None)
+                # Allow custom title or use filename as default
+                title = Prompt.ask(
+                    "Enter a custom title for the document (optional)", 
+                    default=None
+                )
                 uploader.upload_document(file_path, title)
 
+            # List all uploaded documents
             elif choice == "2":
                 uploader.list_documents()
 
+            # Process documents and start Q&A
             elif choice == "3":
+                # Get paths of documents that haven't been indexed yet
+                unindexed_file_paths = uploader.get_unindexed_document_paths()
+
+                new_split_docs = []
+                newly_processed_file_paths = []
+
+                if unindexed_file_paths:
+                    with console.status("[bold cyan]Processing new unindexed documents...[/bold cyan]", spinner="dots"):
+                        new_split_docs, newly_processed_file_paths = process_documents_for_rag(unindexed_file_paths)
+                    if new_split_docs:
+                        unique_sources_new = len({doc.metadata.get('source', '') for doc in new_split_docs if hasattr(doc, 'metadata')})
+                        console.print(f"[green]✅ Processed {unique_sources_new} new document(s) and created {len(new_split_docs)} chunks for Chroma indexing.[/green]")
+                    else:
+                        console.print("[yellow]No supported new documents found to process for initial Chroma indexing.[/yellow]")
+                else:
+                    console.print("[cyan]No new documents to process. Loading existing indexed data.[/cyan]")
+                    new_split_docs = []
+                    newly_processed_file_paths = []
+
+                # Create/update retriever. This function will handle loading existing Chroma
+                # and adding `new_split_docs` to it, and rebuilding BM25 with *all* indexed docs.
+                retriever = create_retriever(new_split_docs, newly_processed_file_paths, uploader)
+                    
+                if not retriever:
+                    console.print("[bold red]Failed to create retriever. Exiting Q&A mode.[/bold red]")
+                    continue
+                
                 # These parts will be filled in by subsequent commits
                 console.print("[yellow]RAG Pipeline processing not yet fully implemented.[/yellow]")
                 continue
 
+            # Exit the application
             elif choice == "4":
                 console.print("\n[bold magenta]Thank you! Hope you had a productive study session![/bold magenta]")
                 break
+                
         except KeyboardInterrupt:
             console.print("\n[bold magenta]Exiting... Thank You! [/bold magenta]")
             sys.exit(0)
