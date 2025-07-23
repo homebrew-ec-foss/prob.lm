@@ -29,6 +29,7 @@ except ImportError:
     PDF_SUPPORT = False
     console.print("[yellow]Warning: PyPDF2 not installed. PDF support disabled. Install with: pip install PyPDF2[/yellow]")
 
+
 #===================================================================================================================
 """
 RAG Document Upload CLI
