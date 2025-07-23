@@ -39,7 +39,7 @@ Upload documents and extract text for RAG pipeline.
 
 # Front-End and Preprocessing
 class DocumentUploader:
-    def _init_(self, storage_dir: str = "rag_documents"):
+    def __init__(self, storage_dir: str = "rag_documents"):
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(exist_ok=True)
         self.docs_file = self.storage_dir / "uploaded_docs.json"
@@ -275,5 +275,5 @@ def main():
         except KeyboardInterrupt:
             console.print("\n[bold magenta]Exiting... Thank You! [/bold magenta]")
             sys.exit(0)
-if _name_ == "_main_":
+if __name__ == "_main_":
     main()
