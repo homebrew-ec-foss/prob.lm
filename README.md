@@ -57,7 +57,7 @@ A low-resource RAG-based assistant that answers academic questions using student
 
 1. **Start the application**
    ```bash
-   python main.py
+   python CommandLine.py
    ```
 
 2. **Main Menu Options**
