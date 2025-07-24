@@ -41,6 +41,15 @@ from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 
+# Prompt Chains (Prompt Engineering)
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.chains.combine_documents import create_stuff_documents_chain
+
+# LLM Import
+from langchain_ollama import OllamaLLM
+
+# Local model name
+LOCAL_MODEL_NAME = "llama3.2:1b" # Ensure this model is available in ollama (ollama pull)
 
 # Embedding and Reranking Models
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
@@ -171,6 +180,11 @@ class DocumentUploader:
 #==============================================================================================
 
 # Core RAG Pipeline
+def initialize_llm():
+    """Initializes the LLM based on the configuration."""
+    console.print(f"[bold yellow]Using Local Model: {LOCAL_MODEL_NAME}[/bold yellow]")
+    return OllamaLLM(model=LOCAL_MODEL_NAME, temperature=0.1)
+
 def process_documents_for_rag(file_paths):
     """
     Loads and splits documents into chunks.
@@ -326,6 +340,79 @@ def create_retriever(new_split_docs, newly_processed_file_paths, uploader):
     console.print("[cyan]✅ Cross-Encoder Re-ranker initialized.[/cyan]")
     return compression_retriever
 
+def create_document_chain(llm):
+    """Creates the LangChain document combining chain."""
+    # This is the prompt that tells the LLM how to answer based on the context
+    qa_prompt = ChatPromptTemplate.from_template(
+        """You are an expert assistant. Your goal is to provide a comprehensive and accurate answer based *only* on the provided context.
+        Synthesize the information from all relevant document chunks to form a cohesive answer.
+        Do not add any information that is not present in the context.
+        If the context does not contain the answer, state that clearly.
+        Try to give the answers in a proper structured format point wise.
+
+        Context:
+        {context}
+
+        Question: {input}
+
+        Detailed Answer:
+        """
+    )
+    # Hooking up the LLM with the prompt to make it answer questions
+    return create_stuff_documents_chain(llm, qa_prompt)
+
+def handle_user_query(query, retriever, document_chain):
+    """Handles the user's query, explicitly getting context and then feeding to LLM."""
+    with console.status("[bold cyan]Thinking...[/bold cyan]", spinner="dots"):
+        console.print("[cyan]Performing hybrid search and re-ranking...[/cyan]")
+
+        # Ask the retriever to find relevant documents for the query
+        retrieved_docs = retriever.invoke(query)
+
+        if not retrieved_docs:
+            console.print(Panel("[bold yellow]No relevant documents found for your query in the loaded context. Therefore, I cannot provide an answer based on the provided documents.[/bold yellow]",
+                                 title="No Context Available", border_style="yellow"))
+            return
+
+        # Pass the retrieved_docs as context to the document_chain
+        # Now, the LLM uses those retrieved docs to answer the question!
+        answer = document_chain.invoke({"context": retrieved_docs, "input": query})
+
+        console.print(Panel(Markdown(answer), title="💡 Answer", border_style="blue"))
+
+        # Format and display sources (Citations)
+        if retrieved_docs:
+            console.print(Panel(format_sources(retrieved_docs), title="📚 Sources", border_style="yellow"))
+
+def format_sources(docs):
+    """Formats source documents for display, removing duplicates."""
+    unique_sources = {}
+    
+    # Process each document to extract source information
+    for doc in docs:
+        # Extract source path and page number from document metadata
+        source_path = doc.metadata.get('source', 'Unknown')
+        source_name = os.path.basename(source_path)    # Get just the filename
+        page_num = doc.metadata.get('page', -1)  # Default to -1 if no page number
+
+        # Create a formatted string for this source
+        source_info = f"📄 {source_name}"   
+        
+        # Add page number if available (page_num is not -1)
+        if page_num != -1:
+            source_info += f" (Page: {page_num + 1})"   # +1 because pages are 0-indexed
+
+        # Use a tuple of (filename, page) as key to ensure uniqueness
+        key = (source_name, page_num)
+        unique_sources[key] = source_info
+
+    # Handle case where no valid sources were found
+    if not unique_sources:
+        return "No specific sources found in the retrieved context."
+
+    # Join all unique sources with newlines between them
+    # Sorting ensures consistent ordering of sources in the output
+    return "\n".join(source_text for key, source_text in sorted(unique_sources.items()))
 
 #==============================================================================================================
 
@@ -341,7 +428,7 @@ def main():
 
     # Initialize core components
     uploader = DocumentUploader()   # Handles document storage and metadata
-    llm = None  # Placeholder for LLM, will be initialized in later commits
+    llm = initialize_llm()  # Initialize the language model
 
     # Will be set up when documents are processed
     retriever = None
@@ -409,9 +496,33 @@ def main():
                     console.print("[bold red]Failed to create retriever. Exiting Q&A mode.[/bold red]")
                     continue
                 
-                # These parts will be filled in by subsequent commits
-                console.print("[yellow]RAG Pipeline processing not yet fully implemented.[/yellow]")
-                continue
+                document_chain = create_document_chain(llm)
+                if not document_chain:
+                    console.print("[bold red]Failed to create RAG document chain. Exiting Q&A mode.[/bold red]")
+                    continue
+
+                console.print("\n[bold green]RAG Pipeline is ready! You can now ask questions.[/bold green]")
+                console.print("[italic]Type 'back' to return to the main menu.[/italic]")
+
+                while True:
+                    try:
+                        query = Prompt.ask("[bold cyan]Ask a question (or 'back') [/bold cyan]")
+                        if query.lower() == 'back':
+                            break
+                        if not query.strip():
+                            continue
+                            
+                        # Process the user's question
+                        handle_user_query(query, retriever, document_chain)
+                        
+                    except KeyboardInterrupt:
+                        console.print("\n[yellow]Returning to main menu...[/yellow]")
+                        break
+                    except Exception as e:
+                        # Log any errors during query processing
+                        console.print(f"[bold red]An error occurred during query processing: {e}[/bold red]")
+                        import traceback
+                        traceback.print_exc()
 
             # Exit the application
             elif choice == "4":
