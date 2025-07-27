@@ -1,13 +1,33 @@
 # Ignore all .env files
 *.env
+.env.*
 *.pdf
 *.csv
+
+.vscode/
+*.code-workspace
+.idea/
+# Ignore Python bytecode and cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Ignore pip cache
+pip-wheel-metadata/
+*.egg-info/
+*.egg
+*.whl
+*.manifest
 
 # Ignore folders (must include trailing slash)
 Resources/
 documents/
 venv/
 .venv/
+env/
+.ipynb_checkpoints/
+*.ipynb
 
 # Ignore specific files
 Test.ipynb
