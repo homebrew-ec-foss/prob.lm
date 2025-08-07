@@ -23,6 +23,7 @@ sentence-transformers>=2.2.2
 # Text Processing and Retrieval
 rank-bm25>=0.2.2
 pypdf>=3.0.0
+PyMuPDF>=1.24.1  # ADDED: For PDF parsing using fitz
 
 # Semantic Chunking Dependencies
 # REMOVED: semantic-text-splitter>=0.7.0  # Not needed for LangChain's SemanticChunker
@@ -41,4 +42,4 @@ scikit-learn>=1.1.0
 python-dotenv>=1.0.0
 
 # LLM Integration
-ollama>=0.1.7
+ollama>=0.1.7  # ADDED: For Ollama model interface

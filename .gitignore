@@ -39,4 +39,9 @@ rag_documents/
 
 
 #test files
-test.py
+CLI/
+RecursiveChunking.py
+semanticChunking.py
+testrequirement.txt
+main2.py
+final/problm_cache/
