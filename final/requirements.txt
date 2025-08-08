@@ -1,0 +1,45 @@
+# Core ML and GPU Support
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# UI and Console
+rich>=13.0.0
+
+# LangChain Core and Components
+langchain>=0.1.0
+langchain-chroma>=0.0.1
+langchain-huggingface>=0.0.3
+langchain-ollama>=0.0.2
+langchain-google-genai>=0.0.7
+langchain-community>=0.0.1
+langchain-experimental>=0.0.1  # ADDED: Required for SemanticChunker
+
+# Embeddings and Vector Store
+huggingface-hub>=0.16.4
+chromadb>=0.4.18
+sentence-transformers>=2.2.2
+
+# Text Processing and Retrieval
+rank-bm25>=0.2.2
+pypdf>=3.0.0
+PyMuPDF>=1.24.1  # ADDED: For PDF parsing using fitz
+
+# Semantic Chunking Dependencies
+# REMOVED: semantic-text-splitter>=0.7.0  # Not needed for LangChain's SemanticChunker
+tiktoken>=0.5.0
+tokenizers>=0.14.0
+
+# Natural Language Processing (for semantic chunking)
+nltk>=3.8.0
+
+# Scientific Computing (for semantic similarity calculations)
+numpy>=1.21.0
+scipy>=1.9.0
+scikit-learn>=1.1.0
+
+# Environment and Configuration
+python-dotenv>=1.0.0
+
+# LLM Integration
+ollama>=0.1.7  # ADDED: For Ollama model interface
